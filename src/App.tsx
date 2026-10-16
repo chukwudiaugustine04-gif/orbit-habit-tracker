@@ -6,6 +6,7 @@ import Dashboard from '@/components/Dashboard';
 import { supabase } from '@/lib/supabase';
 import { applyTheme, type ThemeId } from '@/lib/themes';
 import type { Session } from '@supabase/supabase-js';
+import { InstallPWAButton } from "./InstallPWAButton";
 
 type Screen = 'onboarding' | 'auth' | 'dashboard';
 
