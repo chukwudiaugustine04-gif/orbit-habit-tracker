@@ -170,7 +170,6 @@ export default function TaskScheduler({ userId: _userId }: TaskSchedulerProps) {
   };
 
   const toggleHabit = async (habit: Habit) => {
-    // Check if this habit is unlocked (all previous habits completed)
     const sortedHabits = [...habits].sort((a, b) => a.position - b.position);
     const isUnlocked = sortedHabits.every((h, i) => {
       if (i >= habit.position) return true;
@@ -189,10 +188,21 @@ export default function TaskScheduler({ userId: _userId }: TaskSchedulerProps) {
       )
     );
 
-    await supabase
+    // Persist to Supabase — revert optimistic update on failure
+    const { error: updateError } = await supabase
       .from('habits')
       .update({ completed: newCompleted, completed_at: completedAt })
       .eq('id', habit.id);
+
+    if (updateError) {
+      console.error('Failed to update habit completion:', updateError.message);
+      setHabits((prev) =>
+        prev.map((h) =>
+          h.id === habit.id ? { ...h, completed: habit.completed, completed_at: habit.completed_at } : h
+        )
+      );
+      return;
+    }
 
     // Log completion to completion_logs for analytics
     if (newCompleted) {
@@ -204,7 +214,6 @@ export default function TaskScheduler({ userId: _userId }: TaskSchedulerProps) {
         day_of_week: new Date().getDay(),
       });
     } else {
-      // Remove today's completion log for this habit
       const today = new Date().toISOString().split('T')[0];
       await supabase
         .from('completion_logs')
@@ -213,7 +222,6 @@ export default function TaskScheduler({ userId: _userId }: TaskSchedulerProps) {
         .eq('completed_date', today);
     }
 
-    // Check if all completed — update streak
     const updated = habits.map((h) =>
       h.id === habit.id ? { ...h, completed: newCompleted } : h
     );
@@ -222,7 +230,6 @@ export default function TaskScheduler({ userId: _userId }: TaskSchedulerProps) {
     if (allDone) {
       await updateStreak(true);
     } else {
-      // If un-completing, may need to un-set today's streak
       await updateStreak(false);
     }
   };
