@@ -7,7 +7,6 @@ import {
   ArrowLeft,
   Eye,
   EyeOff,
-  Phone,
   ShieldCheck,
   CheckCircle2,
   AlertCircle,
@@ -15,12 +14,9 @@ import {
 } from 'lucide-react';
 import OrbitLogo from './OrbitLogo';
 import OtpModal from './OtpModal';
-import CountrySelector from './CountrySelector';
 import { supabase } from '@/lib/supabase';
-import { countryCodes, type CountryCode } from '@/lib/countryCodes';
 
 type AuthMode = 'login' | 'register';
-type AuthMethod = 'email' | 'phone';
 type ForgotStep = 'closed' | 'identify' | 'otp' | 'reset';
 
 interface AuthScreenProps {
@@ -33,13 +29,11 @@ interface OtpState {
   open: boolean;
   title: string;
   subtitle: string;
-  channel: 'email' | 'phone';
   target: string;
 }
 
 export default function AuthScreen({ userName, onBack, onAuthenticated }: AuthScreenProps) {
   const [mode, setMode] = useState<AuthMode>('login');
-  const [method, setMethod] = useState<AuthMethod>('email');
 
   // Email state
   const [email, setEmail] = useState('');
@@ -47,10 +41,6 @@ export default function AuthScreen({ userName, onBack, onAuthenticated }: AuthSc
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-
-  // Phone state
-  const [country, setCountry] = useState<CountryCode>(countryCodes[0]);
-  const [phone, setPhone] = useState('');
 
   // UI state
   const [loading, setLoading] = useState(false);
@@ -61,15 +51,12 @@ export default function AuthScreen({ userName, onBack, onAuthenticated }: AuthSc
     open: false,
     title: '',
     subtitle: '',
-    channel: 'email',
     target: '',
   });
 
   // Forgot password state
   const [forgotStep, setForgotStep] = useState<ForgotStep>('closed');
   const [forgotContact, setForgotContact] = useState('');
-  const [forgotCountry, setForgotCountry] = useState<CountryCode>(countryCodes[0]);
-  const [forgotMethod, setForgotMethod] = useState<'email' | 'phone'>('email');
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [forgotError, setForgotError] = useState('');
@@ -152,7 +139,6 @@ export default function AuthScreen({ userName, onBack, onAuthenticated }: AuthSc
             open: true,
             title: 'Verify your email',
             subtitle: `We sent a 4-digit code to ${email.trim()} from Orbit <onboarding@resend.dev>`,
-            channel: 'email',
             target: email.trim(),
           });
         }
@@ -174,63 +160,7 @@ export default function AuthScreen({ userName, onBack, onAuthenticated }: AuthSc
             open: true,
             title: 'Login verification',
             subtitle: `Enter the 4-digit code sent to ${email.trim()} from Orbit <onboarding@resend.dev>`,
-            channel: 'email',
             target: email.trim(),
-          });
-        }
-      }
-    } catch {
-      showError('Something went wrong. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handlePhoneSubmit = async () => {
-    setError('');
-    setLoading(true);
-
-    const fullPhone = `${country.dialCode}${phone.trim()}`;
-
-    try {
-      if (mode === 'register') {
-        const { data, error: signUpError } = await supabase.auth.signUp({
-          phone: fullPhone,
-          password: `${phone.trim()}@Orbit2026`,
-          options: { data: { full_name: userName } },
-        });
-
-        if (signUpError) {
-          showError(signUpError.message);
-          return;
-        }
-
-        if (data.user) {
-          setOtp({
-            open: true,
-            title: 'Verify your phone',
-            subtitle: `We sent a 4-digit code to ${fullPhone}`,
-            channel: 'phone',
-            target: fullPhone,
-          });
-        }
-      } else {
-        const { data, error: signInError } = await supabase.auth.signInWithOtp({
-          phone: fullPhone,
-        });
-
-        if (signInError) {
-          showError(signInError.message);
-          return;
-        }
-
-        if (data) {
-          setOtp({
-            open: true,
-            title: 'Login verification',
-            subtitle: `Enter the 4-digit code sent to ${fullPhone}`,
-            channel: 'phone',
-            target: fullPhone,
           });
         }
       }
@@ -244,38 +174,25 @@ export default function AuthScreen({ userName, onBack, onAuthenticated }: AuthSc
   const handleOtpVerify = async (code: string) => {
     setLoading(true);
     try {
-      if (otp.channel === 'email') {
-        if (mode === 'register') {
-          const { error: verifyError } = await supabase.auth.verifyOtp({
-            email: otp.target,
-            token: code,
-            type: 'signup',
-          });
-          if (verifyError) {
-            showError(verifyError.message);
-            setOtp((prev) => ({ ...prev, open: false }));
-            return;
-          }
-        } else {
-          const { error: verifyError } = await supabase.auth.verifyOtp({
-            email: otp.target,
-            token: code,
-            type: 'email',
-          });
-          if (verifyError) {
-            console.warn('Email OTP verification fallback — session already established');
-          }
-        }
-      } else {
+      if (mode === 'register') {
         const { error: verifyError } = await supabase.auth.verifyOtp({
-          phone: otp.target,
+          email: otp.target,
           token: code,
-          type: 'sms',
+          type: 'signup',
         });
         if (verifyError) {
           showError(verifyError.message);
           setOtp((prev) => ({ ...prev, open: false }));
           return;
+        }
+      } else {
+        const { error: verifyError } = await supabase.auth.verifyOtp({
+          email: otp.target,
+          token: code,
+          type: 'email',
+        });
+        if (verifyError) {
+          console.warn('Email OTP verification fallback — session already established');
         }
       }
 
@@ -314,36 +231,19 @@ export default function AuthScreen({ userName, onBack, onAuthenticated }: AuthSc
   const handleForgotSubmit = async () => {
     setForgotError('');
 
-    if (forgotMethod === 'email') {
-      if (!forgotContact.trim() || !forgotContact.includes('@')) {
-        setForgotError('Please enter a valid email address');
-        return;
-      }
-    } else {
-      if (forgotContact.trim().length < 7) {
-        setForgotError('Please enter a valid phone number');
-        return;
-      }
+    if (!forgotContact.trim() || !forgotContact.includes('@')) {
+      setForgotError('Please enter a valid email address');
+      return;
     }
 
-    const target =
-      forgotMethod === 'email'
-        ? forgotContact.trim()
-        : `${forgotCountry.dialCode}${forgotContact.trim()}`;
-
-    if (forgotMethod === 'email') {
-      const code = '1234';
-      await sendTransactionalEmail(target, 'reset', code, firstName);
-    }
+    const target = forgotContact.trim();
+    const code = '1234';
+    await sendTransactionalEmail(target, 'reset', code, firstName);
 
     setOtp({
       open: true,
       title: 'Reset verification',
-      subtitle:
-        forgotMethod === 'email'
-          ? `Enter the 4-digit code sent to ${target} from Orbit <onboarding@resend.dev>`
-          : `Enter the 4-digit code sent to ${target}`,
-      channel: forgotMethod,
+      subtitle: `Enter the 4-digit code sent to ${target} from Orbit <onboarding@resend.dev>`,
       target,
     });
     setForgotStep('otp');
@@ -382,7 +282,6 @@ export default function AuthScreen({ userName, onBack, onAuthenticated }: AuthSc
 
     setForgotLoading(true);
     try {
-      // Try to update via Supabase if a session exists (e.g. user is logged in)
       const { data: sessionData } = await supabase.auth.getSession();
       if (sessionData.session) {
         const { error } = await supabase.auth.updateUser({ password: newPassword });
@@ -391,7 +290,6 @@ export default function AuthScreen({ userName, onBack, onAuthenticated }: AuthSc
           return;
         }
       } else {
-        // No active session — store locally for this test flow
         localStorage.setItem('orbit-reset-password', newPassword);
       }
       setForgotSuccess('Password reset successfully! Redirecting to login...');
@@ -418,7 +316,6 @@ export default function AuthScreen({ userName, onBack, onAuthenticated }: AuthSc
     email.trim().length > 0 &&
     password.length >= 6 &&
     (mode === 'login' || (confirmPassword.length >= 6 && password === confirmPassword));
-  const canSubmitPhone = phone.trim().length >= 7;
 
   return (
     <motion.div
@@ -502,32 +399,6 @@ export default function AuthScreen({ userName, onBack, onAuthenticated }: AuthSc
           </button>
         </div>
 
-        {/* Method selector */}
-        <div className="mb-5 flex gap-2">
-          <button
-            onClick={() => { setMethod('email'); setError(''); }}
-            className={`flex flex-1 items-center justify-center gap-2 rounded-lg border py-2.5 text-xs font-medium transition-all ${
-              method === 'email'
-                ? 'border-cyan-400/40 bg-cyan-500/10 text-cyan-300'
-                : 'border-white/10 bg-white/5 text-white/40 hover:text-white/60'
-            }`}
-          >
-            <Mail size={14} />
-            Email
-          </button>
-          <button
-            onClick={() => { setMethod('phone'); setError(''); }}
-            className={`flex flex-1 items-center justify-center gap-2 rounded-lg border py-2.5 text-xs font-medium transition-all ${
-              method === 'phone'
-                ? 'border-cyan-400/40 bg-cyan-500/10 text-cyan-300'
-                : 'border-white/10 bg-white/5 text-white/40 hover:text-white/60'
-            }`}
-          >
-            <Phone size={14} />
-            Phone
-          </button>
-        </div>
-
         {/* Error message */}
         <AnimatePresence>
           {error && (
@@ -546,212 +417,155 @@ export default function AuthScreen({ userName, onBack, onAuthenticated }: AuthSc
         </AnimatePresence>
 
         {/* Email form */}
-        <AnimatePresence mode="wait">
-          {method === 'email' && (
-            <motion.div
-              key="email-form"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
-            >
-              <div className="mb-4">
-                <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-white/50">
-                  Email
-                </label>
-                <div className="flex items-center rounded-xl border border-white/10 bg-white/5 transition-all duration-300 focus-within:border-cyan-400/60 focus-within:shadow-[0_0_20px_rgba(34,211,238,0.12)]">
-                  <div className="pl-4">
-                    <Mail size={18} className="text-white/30" />
-                  </div>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@example.com"
-                    className="w-full bg-transparent px-3 py-3.5 text-sm text-white placeholder-white/25 outline-none"
-                  />
-                </div>
+        <motion.div
+          key="email-form"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.2 }}
+        >
+          <div className="mb-4">
+            <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-white/50">
+              Email
+            </label>
+            <div className="flex items-center rounded-xl border border-white/10 bg-white/5 transition-all duration-300 focus-within:border-cyan-400/60 focus-within:shadow-[0_0_20px_rgba(34,211,238,0.12)]">
+              <div className="pl-4">
+                <Mail size={18} className="text-white/30" />
               </div>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                className="w-full bg-transparent px-3 py-3.5 text-sm text-white placeholder-white/25 outline-none"
+              />
+            </div>
+          </div>
 
-              <div className="mb-4">
+          <div className="mb-4">
+            <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-white/50">
+              Password
+            </label>
+            <div className="flex items-center rounded-xl border border-white/10 bg-white/5 transition-all duration-300 focus-within:border-cyan-400/60 focus-within:shadow-[0_0_20px_rgba(34,211,238,0.12)]">
+              <div className="pl-4">
+                <Lock size={18} className="text-white/30" />
+              </div>
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full bg-transparent px-3 py-3.5 text-sm text-white placeholder-white/25 outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="pr-4 text-white/30 transition-colors hover:text-white/60"
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+            <p className="mt-2 text-[11px] text-white/30">Minimum 6 characters</p>
+          </div>
+
+          {/* Confirm Password — register only */}
+          <AnimatePresence>
+            {mode === 'register' && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="mb-4 overflow-hidden"
+              >
                 <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-white/50">
-                  Password
+                  Confirm Password
                 </label>
-                <div className="flex items-center rounded-xl border border-white/10 bg-white/5 transition-all duration-300 focus-within:border-cyan-400/60 focus-within:shadow-[0_0_20px_rgba(34,211,238,0.12)]">
+                <div
+                  className={`flex items-center rounded-xl border bg-white/5 transition-all duration-300 ${
+                    confirmPassword.length > 0 && confirmPassword !== password
+                      ? 'border-red-500/40'
+                      : confirmPassword.length > 0 && confirmPassword === password
+                      ? 'border-emerald-500/40 focus-within:shadow-[0_0_20px_rgba(16,185,129,0.12)]'
+                      : 'border-white/10 focus-within:border-cyan-400/60 focus-within:shadow-[0_0_20px_rgba(34,211,238,0.12)]'
+                  }`}
+                >
                   <div className="pl-4">
-                    <Lock size={18} className="text-white/30" />
+                    <Lock
+                      size={18}
+                      className={
+                        confirmPassword.length > 0 && confirmPassword !== password
+                          ? 'text-red-400/60'
+                          : confirmPassword.length > 0 && confirmPassword === password
+                          ? 'text-emerald-400/60'
+                          : 'text-white/30'
+                      }
+                    />
                   </div>
                   <input
-                    type={showPassword ? 'text' : 'password'}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    type={showConfirm ? 'text' : 'password'}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="••••••••"
                     className="w-full bg-transparent px-3 py-3.5 text-sm text-white placeholder-white/25 outline-none"
                   />
                   <button
                     type="button"
-                    onClick={() => setShowPassword(!showPassword)}
+                    onClick={() => setShowConfirm(!showConfirm)}
                     className="pr-4 text-white/30 transition-colors hover:text-white/60"
                   >
-                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    {showConfirm ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
                 </div>
-                <p className="mt-2 text-[11px] text-white/30">Minimum 6 characters</p>
-              </div>
-
-              {/* Confirm Password — register only */}
-              <AnimatePresence>
-                {mode === 'register' && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="mb-4 overflow-hidden"
-                  >
-                    <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-white/50">
-                      Confirm Password
-                    </label>
-                    <div
-                      className={`flex items-center rounded-xl border bg-white/5 transition-all duration-300 ${
-                        confirmPassword.length > 0 && confirmPassword !== password
-                          ? 'border-red-500/40'
-                          : confirmPassword.length > 0 && confirmPassword === password
-                          ? 'border-emerald-500/40 focus-within:shadow-[0_0_20px_rgba(16,185,129,0.12)]'
-                          : 'border-white/10 focus-within:border-cyan-400/60 focus-within:shadow-[0_0_20px_rgba(34,211,238,0.12)]'
-                      }`}
-                    >
-                      <div className="pl-4">
-                        <Lock
-                          size={18}
-                          className={
-                            confirmPassword.length > 0 && confirmPassword !== password
-                              ? 'text-red-400/60'
-                              : confirmPassword.length > 0 && confirmPassword === password
-                              ? 'text-emerald-400/60'
-                              : 'text-white/30'
-                          }
-                        />
-                      </div>
-                      <input
-                        type={showConfirm ? 'text' : 'password'}
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                        placeholder="••••••••"
-                        className="w-full bg-transparent px-3 py-3.5 text-sm text-white placeholder-white/25 outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowConfirm(!showConfirm)}
-                        className="pr-4 text-white/30 transition-colors hover:text-white/60"
-                      >
-                        {showConfirm ? <EyeOff size={18} /> : <Eye size={18} />}
-                      </button>
-                    </div>
-                    {confirmPassword.length > 0 && (
-                      <div className="mt-2 flex items-center gap-1.5">
-                        {confirmPassword === password ? (
-                          <>
-                            <CheckCircle2 size={12} className="text-emerald-400" />
-                            <span className="text-[11px] text-emerald-400">Passwords match</span>
-                          </>
-                        ) : (
-                          <>
-                            <AlertCircle size={12} className="text-red-400" />
-                            <span className="text-[11px] text-red-400">Passwords do not match</span>
-                          </>
-                        )}
-                      </div>
+                {confirmPassword.length > 0 && (
+                  <div className="mt-2 flex items-center gap-1.5">
+                    {confirmPassword === password ? (
+                      <>
+                        <CheckCircle2 size={12} className="text-emerald-400" />
+                        <span className="text-[11px] text-emerald-400">Passwords match</span>
+                      </>
+                    ) : (
+                      <>
+                        <AlertCircle size={12} className="text-red-400" />
+                        <span className="text-[11px] text-red-400">Passwords do not match</span>
+                      </>
                     )}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {/* Forgot password link — login only */}
-              {mode === 'login' && (
-                <div className="mb-6 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setForgotStep('identify')}
-                    className="text-xs text-cyan-400/70 transition-colors hover:text-cyan-300"
-                  >
-                    Forgot Password?
-                  </button>
-                </div>
-              )}
-
-              <button
-                disabled={!canSubmitEmail || loading}
-                onClick={handleEmailSubmit}
-                className={`flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-semibold transition-all duration-300 ${
-                  canSubmitEmail && !loading
-                    ? 'bg-gradient-to-r from-cyan-500 to-emerald-500 text-white shadow-lg shadow-cyan-500/20 hover:shadow-cyan-500/30'
-                    : 'cursor-not-allowed border border-white/10 bg-white/5 text-white/30'
-                }`}
-              >
-                {loading ? (
-                  <div className="h-5 w-5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                ) : (
-                  <>
-                    {mode === 'register' ? 'Create Account' : 'Log In'}
-                    <ArrowRight size={18} />
-                  </>
-                )}
-              </button>
-            </motion.div>
-          )}
-
-          {/* Phone form */}
-          {method === 'phone' && (
-            <motion.div
-              key="phone-form"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
-            >
-              <div className="mb-6">
-                <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-white/50">
-                  Phone Number
-                </label>
-                <div className="flex items-center rounded-xl border border-white/10 bg-white/5 transition-all duration-300 focus-within:border-cyan-400/60 focus-within:shadow-[0_0_20px_rgba(34,211,238,0.12)]">
-                  <CountrySelector selected={country} onSelect={setCountry} />
-                  <div className="pl-2">
-                    <Phone size={18} className="text-white/30" />
                   </div>
-                  <input
-                    type="tel"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value.replace(/[^0-9]/g, ''))}
-                    placeholder="801 234 5678"
-                    className="w-full rounded-r-xl bg-transparent px-3 py-3.5 text-sm text-white placeholder-white/25 outline-none"
-                  />
-                </div>
-                <p className="mt-2 text-[11px] text-white/30">
-                  We'll send a verification code via SMS
-                </p>
-              </div>
-
-              <button
-                disabled={!canSubmitPhone || loading}
-                onClick={handlePhoneSubmit}
-                className={`flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-semibold transition-all duration-300 ${
-                  canSubmitPhone && !loading
-                    ? 'bg-gradient-to-r from-cyan-500 to-emerald-500 text-white shadow-lg shadow-cyan-500/20 hover:shadow-cyan-500/30'
-                    : 'cursor-not-allowed border border-white/10 bg-white/5 text-white/30'
-                }`}
-              >
-                {loading ? (
-                  <div className="h-5 w-5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                ) : (
-                  <>
-                    {mode === 'register' ? 'Send Code & Register' : 'Send Login Code'}
-                    <ArrowRight size={18} />
-                  </>
                 )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Forgot password link — login only */}
+          {mode === 'login' && (
+            <div className="mb-6 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setForgotStep('identify')}
+                className="text-xs text-cyan-400/70 transition-colors hover:text-cyan-300"
+              >
+                Forgot Password?
               </button>
-            </motion.div>
+            </div>
           )}
-        </AnimatePresence>
+
+          <button
+            disabled={!canSubmitEmail || loading}
+            onClick={handleEmailSubmit}
+            className={`flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-semibold transition-all duration-300 ${
+              canSubmitEmail && !loading
+                ? 'bg-gradient-to-r from-cyan-500 to-emerald-500 text-white shadow-lg shadow-cyan-500/20 hover:shadow-cyan-500/30'
+                : 'cursor-not-allowed border border-white/10 bg-white/5 text-white/30'
+            }`}
+          >
+            {loading ? (
+              <div className="h-5 w-5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+            ) : (
+              <>
+                {mode === 'register' ? 'Create Account' : 'Log In'}
+                <ArrowRight size={18} />
+              </>
+            )}
+          </button>
+        </motion.div>
 
         {/* Divider */}
         <div className="my-6 flex items-center gap-3">
@@ -829,63 +643,23 @@ export default function AuthScreen({ userName, onBack, onAuthenticated }: AuthSc
                     </div>
                     <h3 className="text-lg font-semibold text-white">Forgot Password</h3>
                     <p className="mt-1.5 text-sm text-white/40">
-                      Enter your registered email or phone to receive a reset code
+                      Enter your registered email to receive a reset code
                     </p>
                   </div>
 
-                  {/* Method toggle */}
-                  <div className="mb-4 flex gap-2">
-                    <button
-                      onClick={() => { setForgotMethod('email'); setForgotError(''); }}
-                      className={`flex flex-1 items-center justify-center gap-2 rounded-lg border py-2.5 text-xs font-medium transition-all ${
-                        forgotMethod === 'email'
-                          ? 'border-cyan-400/40 bg-cyan-500/10 text-cyan-300'
-                          : 'border-white/10 bg-white/5 text-white/40 hover:text-white/60'
-                      }`}
-                    >
-                      <Mail size={13} /> Email
-                    </button>
-                    <button
-                      onClick={() => { setForgotMethod('phone'); setForgotError(''); }}
-                      className={`flex flex-1 items-center justify-center gap-2 rounded-lg border py-2.5 text-xs font-medium transition-all ${
-                        forgotMethod === 'phone'
-                          ? 'border-cyan-400/40 bg-cyan-500/10 text-cyan-300'
-                          : 'border-white/10 bg-white/5 text-white/40 hover:text-white/60'
-                      }`}
-                    >
-                      <Phone size={13} /> Phone
-                    </button>
-                  </div>
-
                   {/* Input */}
-                  {forgotMethod === 'email' ? (
-                    <div className="mb-4 flex items-center rounded-xl border border-white/10 bg-white/5 transition-all duration-300 focus-within:border-cyan-400/60">
-                      <div className="pl-4">
-                        <Mail size={18} className="text-white/30" />
-                      </div>
-                      <input
-                        type="email"
-                        value={forgotContact}
-                        onChange={(e) => setForgotContact(e.target.value)}
-                        placeholder="you@example.com"
-                        className="w-full bg-transparent px-3 py-3.5 text-sm text-white placeholder-white/25 outline-none"
-                      />
+                  <div className="mb-4 flex items-center rounded-xl border border-white/10 bg-white/5 transition-all duration-300 focus-within:border-cyan-400/60">
+                    <div className="pl-4">
+                      <Mail size={18} className="text-white/30" />
                     </div>
-                  ) : (
-                    <div className="mb-4 flex items-center rounded-xl border border-white/10 bg-white/5 transition-all duration-300 focus-within:border-cyan-400/60">
-                      <CountrySelector selected={forgotCountry} onSelect={setForgotCountry} />
-                      <div className="pl-2">
-                        <Phone size={18} className="text-white/30" />
-                      </div>
-                      <input
-                        type="tel"
-                        value={forgotContact}
-                        onChange={(e) => setForgotContact(e.target.value.replace(/[^0-9]/g, ''))}
-                        placeholder="801 234 5678"
-                        className="w-full rounded-r-xl bg-transparent px-3 py-3.5 text-sm text-white placeholder-white/25 outline-none"
-                      />
-                    </div>
-                  )}
+                    <input
+                      type="email"
+                      value={forgotContact}
+                      onChange={(e) => setForgotContact(e.target.value)}
+                      placeholder="you@example.com"
+                      className="w-full bg-transparent px-3 py-3.5 text-sm text-white placeholder-white/25 outline-none"
+                    />
+                  </div>
 
                   {forgotError && (
                     <p className="mb-3 text-xs text-red-400">{forgotError}</p>
