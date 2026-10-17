@@ -6,7 +6,7 @@ import Dashboard from '@/components/Dashboard';
 import { supabase } from '@/lib/supabase';
 import { applyTheme, type ThemeId } from '@/lib/themes';
 import type { Session } from '@supabase/supabase-js';
-import { InstallPWAButton } from "./InstallPWAButton";
+import { InstallPrompt } from "./components/InstallPrompt";
 
 type Screen = 'onboarding' | 'auth' | 'dashboard';
 
@@ -138,7 +138,9 @@ export default function App() {
           <div className="h-[800px] w-[800px] rounded-full border border-white/[0.03]" />
         </div>
       </div>
-
+      
+<InstallPrompt />
+      
       <div className="relative z-10 flex min-h-screen items-center justify-center px-4 py-12">
         <AnimatePresence mode="wait">
           {screen === 'onboarding' && (
