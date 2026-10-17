@@ -196,6 +196,7 @@ export default function TaskScheduler({ userId: _userId }: TaskSchedulerProps) {
 
     if (updateError) {
       console.error('Failed to update habit completion:', updateError.message);
+      alert("Supabase Error: " + updateError.message);
       setHabits((prev) =>
         prev.map((h) =>
           h.id === habit.id ? { ...h, completed: habit.completed, completed_at: habit.completed_at } : h
